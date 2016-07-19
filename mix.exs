@@ -1,20 +1,36 @@
-defmodule EX1.Mixfile do
+defmodule App.Mixfile do
     use Mix.Project
 
     def project do
-        [app: :ex1,
-        version: "0.0.1",
-        elixir: "~> 1.2",
-        build_embedded: Mix.env == :prod,
-        start_permanent: Mix.env == :prod,
-        deps: deps]
+        [
+            app: :app,
+            version: "0.0.1",
+            elixir: "~> 1.2",
+            escript: escript,
+            build_embedded: Mix.env == :prod,
+            start_permanent: Mix.env == :prod,
+            deps: deps
+        ]
+    end
+
+    # Needed for calling program as executable
+    def escript do
+        [
+            main_module: App.CLI
+        ]
     end
 
     # Configuration for the OTP application
     #
     # Type "mix help compile.app" for more information
     def application do
-        [applications: [:logger]]
+        [
+            applications:
+            [
+                :logger,
+                :quantum
+            ]
+        ]
     end
 
     # Dependencies can be Hex packages:
@@ -28,7 +44,8 @@ defmodule EX1.Mixfile do
     # Type "mix help deps" for more examples and options
     defp deps do
         [
-            {:rethinkdb, github: "hamiltop/rethinkdb-elixir"}
+            {:rethinkdb, github: "hamiltop/rethinkdb-elixir"},
+            {:quantum, ">= 1.7.1"}
         ]
     end
 end

@@ -1,4 +1,5 @@
 defmodule App do
+    use Application
     use RethinkDB.Connection
     import RethinkDB.Query
     import Supervisor.Spec, warn: false
@@ -6,47 +7,69 @@ defmodule App do
     alias RethinkDB.Query
 
     worker(App, [])
-
+    
     def calc_weighted_value(events) do
-        hour = 3600
-        half_life = 24 * hour
+        half_life = 24
+        interval = 12
+        percentage = 0.95
+        decay = :math.pow(percentage, half_life / interval)
 
-        # weighted_value * (1 - 0.5 * ((now - created_at) / half_life))
-        # When (now - created_at) is half_life(i.e. 1 day has passed), it
-        # becomes: weighted_value * (1 - 0.5 * 1)
         Query.update(events, (lambda fn(row) ->
                 %{
-                    weighted_value:
-                        Query.mul(row[:weighted_value],
-                            Query.sub(1,
-                                Query.mul(0.5,
-                                    Query.divide(
-                                        Query.sub(
-                                            Query.now
-                                                |> Query.to_epoch_time,
-                                            row[:created_at]
-                                                |> Query.iso8601
-                                                |> Query.to_epoch_time
-                                        ),
-                                        half_life
-                                    )
-                                )
-                            )
-                        )
+                    weighted_value: Query.mul(row[:weighted_value], decay)
                 }
             end)
         )
     end
 
-    def run do
-        { :ok, conn } = RethinkDB.Connection.start_link(
-            [ host: "localhost", port: 28015 ]
-        )
+    def start_job do
+        #    * * * * * command to be executed
+        #    - - - - -
+        #    | | | | |
+        #    | | | | ----- Day of week (0 - 7) (Sunday=0 or 7)
+        #    | | | ------- Month (1 - 12)
+        #    | | --------- Day of month (1 - 31)
+        #    | ----------- Hour (0 - 23)
+        #    ------------- Minute (0 - 59)
+        job = %Quantum.Job{
+            schedule: "* * * * *",
+            task: fn -> start end
+        }
+        Quantum.add_job(:ticker, job)
+    end
+
+    def start do
+        IO.puts "RUNNING START"
+
+        ip_address_docker_cloud = System.get_env("RETHINKDB_PORT_8080_TCP_ADDR")
+        rethinkdb_auth_key = System.get_env("RETHINKDB_AUTH_KEY")
+
+        { :ok, conn } = cond do
+            !is_nil(ip_address_docker_cloud) ->
+                 RethinkDB.Connection.start_link(
+                    [
+                        host: ip_address_docker_cloud
+                    ]
+                )
+
+            !is_nil(rethinkdb_auth_key) ->
+                RethinkDB.Connection.start_link(
+                    [
+                        port: 28015,
+                        db: "prod",
+                        host: "localhost",
+                        auth_key: rethinkdb_auth_key
+                    ]
+                )
+
+            true ->
+                RethinkDB.Connection.start_link([])
+        end
+
 
         table("events")
             |> calc_weighted_value
             |> RethinkDB.run(conn)
-            |> Utils.handle_graphql_resp
     end
 
 end
