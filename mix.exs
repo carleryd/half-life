@@ -6,17 +6,9 @@ defmodule App.Mixfile do
             app: :app,
             version: "0.0.1",
             elixir: "~> 1.2",
-            escript: escript,
             build_embedded: Mix.env == :prod,
             start_permanent: Mix.env == :prod,
             deps: deps
-        ]
-    end
-
-    # Needed for calling program as executable
-    def escript do
-        [
-            main_module: App.CLI
         ]
     end
 
