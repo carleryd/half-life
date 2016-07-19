@@ -7,43 +7,46 @@ defmodule App do
 
     worker(App, [])
 
-    half_life = 24
-    update_interval = 6
-    percentage = 5
+    def calc_weighted_value(events) do
+        hour = 3600
+        half_life = 24 * hour
 
+        # weighted_value * (1 - 0.5 * ((now - created_at) / half_life))
+        # When (now - created_at) is half_life(i.e. 1 day has passed), it
+        # becomes: weighted_value * (1 - 0.5 * 1)
+        Query.update(events, (lambda fn(row) ->
+                %{
+                    weighted_value:
+                        Query.mul(row[:weighted_value],
+                            Query.sub(1,
+                                Query.mul(0.5,
+                                    Query.divide(
+                                        Query.sub(
+                                            Query.now
+                                                |> Query.to_epoch_time,
+                                            row[:created_at]
+                                                |> Query.iso8601
+                                                |> Query.to_epoch_time
+                                        ),
+                                        half_life
+                                    )
+                                )
+                            )
+                        )
+                }
+            end)
+        )
+    end
 
     def run do
         { :ok, conn } = RethinkDB.Connection.start_link(
             [ host: "localhost", port: 28015 ]
         )
 
-        events_data = table("events")
-            |> Query.map((lambda fn(row) ->
-                    %{
-                        created_at: (row[:created_at]
-                            |> Query.iso8601
-                            |> Query.to_epoch_time),
-                        current_time: Query.now |> Query.to_epoch_time(),
-                        popularity_value: row[:popularity_value],
-                        weighted_value: row[:weighted_value],
-                    }
-                end)
-            )
+        table("events")
+            |> calc_weighted_value
             |> RethinkDB.run(conn)
             |> Utils.handle_graphql_resp
-            |> IO.inspect
-
-        Enum.map(events_data,
-            fn event_data ->
-                IO.inspect event_data
-                calculate(event_data)
-            end
-        )
-
-    end
-
-    def calculate event_data do
-        event_data[:current_time] - event_data[:created_at]
     end
 
 end
